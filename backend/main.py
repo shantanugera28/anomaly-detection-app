@@ -13,7 +13,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-models = {}
+models = {
+    "fire": YOLO("https://huggingface.co/Shantanu28/anomaly-detection-app/resolve/main/firebest.pt"),
+    "weapon": YOLO("https://huggingface.co/Shantanu28/anomaly-detection-app/resolve/main/weaponbest.pt")
+}
 
 @app.get("/")
 def home():
