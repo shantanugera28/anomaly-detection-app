@@ -13,10 +13,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-models = {
-    "fire": YOLO("models/firebest.pt"),
-    "weapon": YOLO("models/weaponbest.pt")
-}
+models = {}
 
 @app.get("/")
 def home():
