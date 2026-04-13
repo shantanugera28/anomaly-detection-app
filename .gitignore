@@ -2,3 +2,6 @@ myenv/
 node_modules/
 __pycache__/
 .env
+
+backend/models/
+backend/temp.jpg
