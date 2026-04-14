@@ -10,7 +10,7 @@ function App() {
     formData.append("file", file);
     formData.append("anomaly_type", type);
 
-    const res = await fetch("http://127.0.0.1:8000/predict", {
+    const res = await fetch("https://anomaly-detection-app-t27a.onrender.com/predict", {
       method: "POST",
       body: formData,
     });
