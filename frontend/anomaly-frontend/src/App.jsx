@@ -5,9 +5,11 @@ function App() {
   const [type, setType] = useState("fire");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [running, setRunning] = useState(false);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const intervalRef = useRef(null);
 
   const startCamera = async () => {
     try {
@@ -18,12 +20,7 @@ function App() {
     }
   };
 
-  const captureImage = async () => {
-    if (!videoRef.current || !videoRef.current.srcObject) {
-      alert("Start camera first");
-      return;
-    }
-
+  const captureFrameAndDetect = async () => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
 
@@ -33,30 +30,60 @@ function App() {
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0);
 
-    canvas.toBlob(async (blob) => {
-      const formData = new FormData();
-      formData.append("file", blob, "webcam.jpg");
-      formData.append("anomaly_type", type);
+    return new Promise((resolve) => {
+      canvas.toBlob(async (blob) => {
+        const formData = new FormData();
+        formData.append("file", blob, "frame.jpg");
+        formData.append("anomaly_type", type);
 
-      try {
-        setLoading(true);
+        try {
+          const res = await fetch(
+            "https://anomaly-detection-app-t27a.onrender.com/predict",
+            {
+              method: "POST",
+              body: formData,
+            }
+          );
 
-        const res = await fetch(
-          "https://anomaly-detection-app-t27a.onrender.com/predict",
-          {
-            method: "POST",
-            body: formData,
-          }
-        );
+          const data = await res.json();
+          resolve(data);
+        } catch (err) {
+          console.log("Detection error");
+          resolve(null);
+        }
+      }, "image/jpeg");
+    });
+  };
 
-        const data = await res.json();
-        setResult(data);
-      } catch (err) {
-        alert("Error detecting from webcam");
-      } finally {
-        setLoading(false);
-      }
-    }, "image/jpeg");
+  const captureImage = async () => {
+    if (!videoRef.current || !videoRef.current.srcObject) {
+      alert("Start camera first");
+      return;
+    }
+
+    setLoading(true);
+    const data = await captureFrameAndDetect();
+    if (data) setResult(data);
+    setLoading(false);
+  };
+
+  const startRealtimeDetection = () => {
+    if (!videoRef.current || !videoRef.current.srcObject) {
+      alert("Start camera first");
+      return;
+    }
+
+    setRunning(true);
+
+    intervalRef.current = setInterval(async () => {
+      const data = await captureFrameAndDetect();
+      if (data) setResult(data);
+    }, 2000); // every 2 seconds
+  };
+
+  const stopRealtimeDetection = () => {
+    setRunning(false);
+    clearInterval(intervalRef.current);
   };
 
   const handleSubmit = async () => {
@@ -126,11 +153,21 @@ function App() {
         {loading ? "Detecting..." : "Capture & Detect"}
       </button>
 
+      <br /><br />
+
+      <button onClick={startRealtimeDetection} disabled={running}>
+        Start Real-Time Detection
+      </button>
+
+      <button onClick={stopRealtimeDetection} disabled={!running}>
+        Stop Detection
+      </button>
+
       <canvas ref={canvasRef} style={{ display: "none" }} />
 
       <br /><br />
 
-      {/* Result Section */}
+      {/* Result */}
       {result && (
         <div>
           <h3>Detected:</h3>
