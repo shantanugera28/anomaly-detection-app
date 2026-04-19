@@ -5,6 +5,10 @@ import shutil
 import os
 from PIL import Image
 import io
+import smtplib
+import os
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 app = FastAPI()
 app.add_middleware(
@@ -19,6 +23,39 @@ models = {
     "fire": YOLO("https://huggingface.co/Shantanu28/anomaly-detection-app/resolve/main/firebest.pt"),
     "weapon": YOLO("https://huggingface.co/Shantanu28/anomaly-detection-app/resolve/main/weaponbest.pt")
 }
+
+def send_email_alert(anomaly_type, detections):
+    sender = os.getenv("EMAIL_USER")
+    password = os.getenv("EMAIL_PASS")
+    receiver = os.getenv("ALERT_TO")
+
+    if not sender or not password or not receiver:
+        return
+
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = sender
+        msg["To"] = receiver
+        msg["Subject"] = f"ALERT: {anomaly_type.upper()} Detected"
+
+        body = f"""
+Anomaly detected.
+
+Type: {anomaly_type}
+
+Detections:
+{detections}
+"""
+        msg.attach(MIMEText(body, "plain"))
+
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender, password)
+        server.sendmail(sender, receiver, msg.as_string())
+        server.quit()
+
+    except Exception as e:
+        print("Email failed:", e)
 
 @app.get("/")
 def home():
@@ -50,6 +87,9 @@ async def predict(file: UploadFile = File(...), anomaly_type: str = Form(...)):
                 "label": names[cls_id],
                 "confidence": float(box.conf)
             })
+    
+    if len(detections) > 0:
+        send_email_alert(anomaly_type, detections)
 
     return {
         "anomaly": anomaly_type,
