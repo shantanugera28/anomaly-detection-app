@@ -7,6 +7,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("Idle");
+  const [preview, setPreview] = useState(null);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -14,16 +15,34 @@ function App() {
 
   useEffect(() => {
     const ping = () => {
-      fetch("https://anomaly-detection-app-t27a.onrender.com/health")
-        .catch(() => {});
+      fetch("https://anomaly-detection-app-t27a.onrender.com/health").catch(
+        () => {}
+      );
     };
 
     ping();
-
     const id = setInterval(ping, 240000);
-
     return () => clearInterval(id);
   }, []);
+
+  const drawBoxes = (detections) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+
+    ctx.lineWidth = 3;
+    ctx.font = "16px Arial";
+    ctx.strokeStyle = "#ef4444";
+    ctx.fillStyle = "#ef4444";
+
+    detections.forEach((d) => {
+      ctx.strokeRect(d.x1, d.y1, d.x2 - d.x1, d.y2 - d.y1);
+      ctx.fillText(
+        `${d.label} ${(d.confidence * 100).toFixed(1)}%`,
+        d.x1,
+        d.y1 - 8
+      );
+    });
+  };
 
   const startCamera = async () => {
     try {
@@ -31,12 +50,12 @@ function App() {
       videoRef.current.srcObject = stream;
       setStatus("Camera started");
     } catch (err) {
-      alert("Camera access denied or not available");
+      alert("Camera access denied or unavailable");
     }
   };
 
   const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
+    if (videoRef.current?.srcObject) {
       const tracks = videoRef.current.srcObject.getTracks();
       tracks.forEach((track) => track.stop());
       videoRef.current.srcObject = null;
@@ -70,7 +89,7 @@ function App() {
 
           const data = await res.json();
           resolve(data);
-        } catch (err) {
+        } catch {
           resolve(null);
         }
       }, "image/jpeg", 0.6);
@@ -78,7 +97,7 @@ function App() {
   };
 
   const captureImage = async () => {
-    if (!videoRef.current || !videoRef.current.srcObject) {
+    if (!videoRef.current?.srcObject) {
       alert("Start camera first");
       return;
     }
@@ -90,6 +109,8 @@ function App() {
 
     if (data) {
       setResult(data);
+      drawBoxes(data.detections);
+      setPreview(canvasRef.current.toDataURL("image/jpeg"));
     }
 
     setLoading(false);
@@ -104,7 +125,7 @@ function App() {
   };
 
   const startRealtimeDetection = () => {
-    if (!videoRef.current || !videoRef.current.srcObject) {
+    if (!videoRef.current?.srcObject) {
       alert("Start camera first");
       return;
     }
@@ -116,13 +137,14 @@ function App() {
 
     intervalRef.current = setInterval(async () => {
       if (busy) return;
-
       busy = true;
 
       const data = await captureFrameAndDetect();
 
       if (data) {
         setResult(data);
+        drawBoxes(data.detections);
+        setPreview(canvasRef.current.toDataURL("image/jpeg"));
 
         if (data.detections.length > 0) {
           stopRealtimeDetection();
@@ -137,7 +159,7 @@ function App() {
 
   const handleSubmit = async () => {
     if (!file) {
-      alert("Please upload a file first");
+      alert("Please upload image first");
       return;
     }
 
@@ -159,7 +181,23 @@ function App() {
 
       const data = await res.json();
       setResult(data);
-    } catch (err) {
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext("2d");
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        ctx.drawImage(img, 0, 0);
+        drawBoxes(data.detections);
+
+        setPreview(canvas.toDataURL("image/jpeg"));
+      };
+
+      img.src = URL.createObjectURL(file);
+    } catch {
       alert("Error detecting image");
     } finally {
       setLoading(false);
@@ -184,7 +222,7 @@ function App() {
 
         <div className="grid md:grid-cols-2 gap-6">
 
-          <div className="bg-slate-900 rounded-2xl shadow-lg border border-slate-800 p-6 space-y-4">
+          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-6 space-y-4">
             <h2 className="text-2xl font-semibold">Upload Detection</h2>
 
             <input
@@ -205,16 +243,16 @@ function App() {
             <button
               onClick={handleSubmit}
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 transition p-3 rounded-xl font-semibold"
+              className="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-xl font-semibold"
             >
               {loading ? "Detecting..." : "Detect from Image"}
             </button>
           </div>
 
-          <div className="bg-slate-900 rounded-2xl shadow-lg border border-slate-800 p-6 space-y-4">
+          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-6 space-y-4">
             <h2 className="text-2xl font-semibold">Webcam Detection</h2>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={startCamera}
                 className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-xl"
@@ -242,7 +280,7 @@ function App() {
                 disabled={loading}
                 className="bg-blue-600 hover:bg-blue-700 p-3 rounded-xl"
               >
-                {loading ? "Detecting..." : "Capture & Detect"}
+                Capture & Detect
               </button>
 
               <button
@@ -261,32 +299,39 @@ function App() {
                 Stop Detection
               </button>
             </div>
-
-            <canvas ref={canvasRef} style={{ display: "none" }} />
           </div>
         </div>
 
+        {preview && (
+          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-6">
+            <h2 className="text-2xl font-semibold mb-4">Detection Preview</h2>
+            <img
+              src={preview}
+              alt="preview"
+              className="rounded-xl border border-slate-700 w-full"
+            />
+          </div>
+        )}
+
         {result && (
-          <div className="bg-slate-900 rounded-2xl shadow-lg border border-slate-800 p-6">
+          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-6">
             <h2 className="text-2xl font-semibold mb-4">Detection Results</h2>
 
             {result.detections.length === 0 ? (
-              <p className="text-green-400 font-medium">
-                No anomaly detected
-              </p>
+              <p className="text-green-400 font-medium">No anomaly detected</p>
             ) : (
               result.detections.map((d, i) => (
                 <div key={i} className="mb-5">
                   <div className="flex justify-between mb-1">
-                    <span className="capitalize">{d.label}</span>
+                    <span>{d.label}</span>
                     <span>{(d.confidence * 100).toFixed(2)}%</span>
                   </div>
 
-                  <div className="w-full bg-slate-700 rounded-full h-3">
+                  <div className="w-full bg-slate-700 h-3 rounded-full">
                     <div
                       className="bg-red-500 h-3 rounded-full"
                       style={{ width: `${d.confidence * 100}%` }}
-                    ></div>
+                    />
                   </div>
                 </div>
               ))
@@ -294,6 +339,7 @@ function App() {
           </div>
         )}
 
+        <canvas ref={canvasRef} style={{ display: "none" }} />
       </div>
     </div>
   );

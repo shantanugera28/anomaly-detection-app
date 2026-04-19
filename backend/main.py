@@ -109,10 +109,15 @@ async def predict(file: UploadFile = File(...), anomaly_type: str = Form(...)):
 
         for box in r.boxes:
             cls_id = int(box.cls)
+            coords = box.xyxy[0].tolist()
 
             detections.append({
                 "label": names[cls_id],
-                "confidence": float(box.conf)
+                "confidence": float(box.conf),
+                "x1": coords[0],
+                "y1": coords[1],
+                "x2": coords[2],
+                "y2": coords[3]
             })
 
     current_time = time.time()
