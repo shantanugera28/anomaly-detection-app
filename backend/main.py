@@ -38,7 +38,7 @@ async def predict(file: UploadFile = File(...), anomaly_type: str = Form(...)):
     contents = await file.read()
     image = Image.open(io.BytesIO(contents)).convert("RGB")
 
-    results = model(image, imgsz=640, conf=0.45)
+    results = model(image, imgsz=416, conf=0.20)
 
     detections = []
 
