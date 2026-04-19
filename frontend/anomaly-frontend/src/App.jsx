@@ -6,6 +6,7 @@ function App() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
+  const [status, setStatus] = useState("Idle");
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -28,8 +29,19 @@ function App() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       videoRef.current.srcObject = stream;
+      setStatus("Camera started");
     } catch (err) {
       alert("Camera access denied or not available");
+    }
+  };
+
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const tracks = videoRef.current.srcObject.getTracks();
+
+      tracks.forEach((track) => track.stop());
+
+      videoRef.current.srcObject = null;
     }
   };
 
@@ -61,7 +73,6 @@ function App() {
           const data = await res.json();
           resolve(data);
         } catch (err) {
-          console.log("Detection error");
           resolve(null);
         }
       }, "image/jpeg", 0.6);
@@ -75,9 +86,23 @@ function App() {
     }
 
     setLoading(true);
+    setStatus("Analyzing frame...");
+
     const data = await captureFrameAndDetect();
-    if (data) setResult(data);
+
+    if (data) {
+      setResult(data);
+    }
+
     setLoading(false);
+    setStatus("Idle");
+  };
+
+  const stopRealtimeDetection = () => {
+    clearInterval(intervalRef.current);
+    setRunning(false);
+    stopCamera();
+    setStatus("Detection stopped");
   };
 
   const startRealtimeDetection = () => {
@@ -87,6 +112,7 @@ function App() {
     }
 
     setRunning(true);
+    setStatus("Scanning...");
 
     let busy = false;
 
@@ -96,15 +122,19 @@ function App() {
       busy = true;
 
       const data = await captureFrameAndDetect();
-      if (data) setResult(data);
+
+      if (data) {
+        setResult(data);
+
+        if (data.detections.length > 0) {
+          stopRealtimeDetection();
+          setStatus("Threat detected");
+          alert("Threat detected. Camera stopped.");
+        }
+      }
 
       busy = false;
     }, 2000);
-  };
-
-  const stopRealtimeDetection = () => {
-    setRunning(false);
-    clearInterval(intervalRef.current);
   };
 
   const handleSubmit = async () => {
@@ -119,6 +149,7 @@ function App() {
 
     try {
       setLoading(true);
+      setStatus("Analyzing image...");
 
       const res = await fetch(
         "https://anomaly-detection-app-t27a.onrender.com/predict",
@@ -134,6 +165,7 @@ function App() {
       alert("Error detecting image");
     } finally {
       setLoading(false);
+      setStatus("Idle");
     }
   };
 
@@ -141,7 +173,8 @@ function App() {
     <div style={{ padding: "20px" }}>
       <h1>Anomaly Detection</h1>
 
-      {/* Upload Section */}
+      <p>Status: {status}</p>
+
       <input type="file" onChange={(e) => setFile(e.target.files[0])} />
 
       <br /><br />
@@ -159,10 +192,11 @@ function App() {
 
       <hr />
 
-      {/* Webcam Section */}
       <h2>Webcam Detection</h2>
 
       <button onClick={startCamera}>Start Camera</button>
+
+      <button onClick={stopCamera}>Stop Camera</button>
 
       <br /><br />
 
@@ -188,15 +222,19 @@ function App() {
 
       <br /><br />
 
-      {/* Result */}
       {result && (
         <div>
           <h3>Detected:</h3>
-          {result.detections.map((d, i) => (
-            <p key={i}>
-              {type} - {(d.confidence * 100).toFixed(2)}%
-            </p>
-          ))}
+
+          {result.detections.length === 0 ? (
+            <p>No anomaly detected</p>
+          ) : (
+            result.detections.map((d, i) => (
+              <p key={i}>
+                {d.label} - {(d.confidence * 100).toFixed(2)}%
+              </p>
+            ))
+          )}
         </div>
       )}
     </div>
