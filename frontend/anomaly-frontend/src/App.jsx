@@ -38,9 +38,7 @@ function App() {
   const stopCamera = () => {
     if (videoRef.current && videoRef.current.srcObject) {
       const tracks = videoRef.current.srcObject.getTracks();
-
       tracks.forEach((track) => track.stop());
-
       videoRef.current.srcObject = null;
     }
   };
@@ -170,73 +168,133 @@ function App() {
   };
 
   return (
-    <div style={{ padding: "20px" }}>
-      <h1>Anomaly Detection</h1>
+    <div className="min-h-screen bg-slate-950 text-white p-6">
+      <div className="max-w-6xl mx-auto space-y-6">
 
-      <p>Status: {status}</p>
+        <div className="bg-slate-900 rounded-2xl shadow-xl border border-slate-800 p-6">
+          <h1 className="text-4xl font-bold">Anomaly Detection Dashboard</h1>
+          <p className="text-slate-400 mt-2">
+            Fire & Weapon Smart Monitoring System
+          </p>
 
-      <input type="file" onChange={(e) => setFile(e.target.files[0])} />
-
-      <br /><br />
-
-      <select onChange={(e) => setType(e.target.value)}>
-        <option value="fire">Fire</option>
-        <option value="weapon">Weapon</option>
-      </select>
-
-      <br /><br />
-
-      <button onClick={handleSubmit} disabled={loading}>
-        {loading ? "Detecting..." : "Detect from Image"}
-      </button>
-
-      <hr />
-
-      <h2>Webcam Detection</h2>
-
-      <button onClick={startCamera}>Start Camera</button>
-
-      <button onClick={stopCamera}>Stop Camera</button>
-
-      <br /><br />
-
-      <video ref={videoRef} autoPlay width="400" />
-
-      <br /><br />
-
-      <button onClick={captureImage} disabled={loading}>
-        {loading ? "Detecting..." : "Capture & Detect"}
-      </button>
-
-      <br /><br />
-
-      <button onClick={startRealtimeDetection} disabled={running}>
-        Start Real-Time Detection
-      </button>
-
-      <button onClick={stopRealtimeDetection} disabled={!running}>
-        Stop Detection
-      </button>
-
-      <canvas ref={canvasRef} style={{ display: "none" }} />
-
-      <br /><br />
-
-      {result && (
-        <div>
-          <h3>Detected:</h3>
-
-          {result.detections.length === 0 ? (
-            <p>No anomaly detected</p>
-          ) : (
-            result.detections.map((d, i) => (
-              <p key={i}>
-                {d.label} - {(d.confidence * 100).toFixed(2)}%
-              </p>
-            ))
-          )}
+          <div className="mt-4 inline-block px-4 py-2 rounded-full bg-blue-600 text-sm font-semibold">
+            Status: {status}
+          </div>
         </div>
-      )}
+
+        <div className="grid md:grid-cols-2 gap-6">
+
+          <div className="bg-slate-900 rounded-2xl shadow-lg border border-slate-800 p-6 space-y-4">
+            <h2 className="text-2xl font-semibold">Upload Detection</h2>
+
+            <input
+              type="file"
+              onChange={(e) => setFile(e.target.files[0])}
+              className="block w-full text-sm"
+            />
+
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="w-full bg-slate-800 p-3 rounded-xl"
+            >
+              <option value="fire">Fire</option>
+              <option value="weapon">Weapon</option>
+            </select>
+
+            <button
+              onClick={handleSubmit}
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-700 transition p-3 rounded-xl font-semibold"
+            >
+              {loading ? "Detecting..." : "Detect from Image"}
+            </button>
+          </div>
+
+          <div className="bg-slate-900 rounded-2xl shadow-lg border border-slate-800 p-6 space-y-4">
+            <h2 className="text-2xl font-semibold">Webcam Detection</h2>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={startCamera}
+                className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-xl"
+              >
+                Start Camera
+              </button>
+
+              <button
+                onClick={stopCamera}
+                className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-xl"
+              >
+                Stop Camera
+              </button>
+            </div>
+
+            <video
+              ref={videoRef}
+              autoPlay
+              className="w-full rounded-xl border border-slate-700"
+            />
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={captureImage}
+                disabled={loading}
+                className="bg-blue-600 hover:bg-blue-700 p-3 rounded-xl"
+              >
+                {loading ? "Detecting..." : "Capture & Detect"}
+              </button>
+
+              <button
+                onClick={startRealtimeDetection}
+                disabled={running}
+                className="bg-purple-600 hover:bg-purple-700 p-3 rounded-xl"
+              >
+                Start Live
+              </button>
+
+              <button
+                onClick={stopRealtimeDetection}
+                disabled={!running}
+                className="col-span-2 bg-slate-700 hover:bg-slate-600 p-3 rounded-xl"
+              >
+                Stop Detection
+              </button>
+            </div>
+
+            <canvas ref={canvasRef} style={{ display: "none" }} />
+          </div>
+        </div>
+
+        {result && (
+          <div className="bg-slate-900 rounded-2xl shadow-lg border border-slate-800 p-6">
+            <h2 className="text-2xl font-semibold mb-4">Detection Results</h2>
+
+            {result.detections.length === 0 ? (
+              <p className="text-green-400 font-medium">
+                No anomaly detected
+              </p>
+            ) : (
+              result.detections.map((d, i) => (
+                <div key={i} className="mb-5">
+                  <div className="flex justify-between mb-1">
+                    <span className="capitalize">{d.label}</span>
+                    <span>{(d.confidence * 100).toFixed(2)}%</span>
+                  </div>
+
+                  <div className="w-full bg-slate-700 rounded-full h-3">
+                    <div
+                      className="bg-red-500 h-3 rounded-full"
+                      style={{ width: `${d.confidence * 100}%` }}
+                    ></div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }
