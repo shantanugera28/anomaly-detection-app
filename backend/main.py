@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from ultralytics import YOLO
 import shutil
 import os
+from PIL import Image
+import io
 
 app = FastAPI()
 app.add_middleware(
@@ -22,21 +24,24 @@ models = {
 def home():
     return {"message": "API running"}
 
+@app.get("/health")
+def health():
+    return {"status": "ready"}
+
 @app.post("/predict")
 async def predict(file: UploadFile = File(...), anomaly_type: str = Form(...)):
-    file_path = os.path.join("temp.jpg")
-
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
     model = models.get(anomaly_type)
 
     if model is None:
         return {"error": "Invalid anomaly type"}
 
-    results = model(file_path)
+    contents = await file.read()
+    image = Image.open(io.BytesIO(contents)).convert("RGB")
+
+    results = model(image, imgsz=640, conf=0.45)
 
     detections = []
+
     for r in results:
         names = r.names
         for box in r.boxes:

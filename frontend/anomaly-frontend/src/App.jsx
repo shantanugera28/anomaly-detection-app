@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 function App() {
   const [file, setFile] = useState(null);
@@ -10,6 +10,11 @@ function App() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const intervalRef = useRef(null);
+
+  useEffect(() => {
+    fetch("https://anomaly-detection-app-t27a.onrender.com/health")
+      .catch(() => {});
+  }, []);
 
   const startCamera = async () => {
     try {
@@ -24,11 +29,11 @@ function App() {
     const canvas = canvasRef.current;
     const video = videoRef.current;
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = 640;
+    canvas.height = 480;
 
     const ctx = canvas.getContext("2d");
-    ctx.drawImage(video, 0, 0);
+    ctx.drawImage(video, 0, 0, 640, 480);
 
     return new Promise((resolve) => {
       canvas.toBlob(async (blob) => {
@@ -51,7 +56,7 @@ function App() {
           console.log("Detection error");
           resolve(null);
         }
-      }, "image/jpeg");
+      }, "image/jpeg", 0.6);
     });
   };
 
@@ -75,10 +80,18 @@ function App() {
 
     setRunning(true);
 
+    let busy = false;
+
     intervalRef.current = setInterval(async () => {
+      if (busy) return;
+
+      busy = true;
+
       const data = await captureFrameAndDetect();
       if (data) setResult(data);
-    }, 2000); // every 2 seconds
+
+      busy = false;
+    }, 2000);
   };
 
   const stopRealtimeDetection = () => {
