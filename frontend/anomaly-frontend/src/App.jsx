@@ -12,8 +12,16 @@ function App() {
   const intervalRef = useRef(null);
 
   useEffect(() => {
-    fetch("https://anomaly-detection-app-t27a.onrender.com/health")
-      .catch(() => {});
+    const ping = () => {
+      fetch("https://anomaly-detection-app-t27a.onrender.com/health")
+        .catch(() => {});
+    };
+
+    ping();
+
+    const id = setInterval(ping, 240000);
+
+    return () => clearInterval(id);
   }, []);
 
   const startCamera = async () => {
