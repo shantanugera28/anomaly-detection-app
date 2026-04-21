@@ -1,5 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from ultralytics import YOLO
 from PIL import Image
 import io
@@ -7,13 +8,15 @@ import os
 import smtplib
 import time
 import gc
+import asyncio
+from threading import Lock
 
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 
-app = FastAPI()
+app = FastAPI(title="Anomaly Detection API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,6 +32,7 @@ MODEL_URLS = {
 }
 
 models_cache = {}
+model_lock = Lock()
 
 last_email_time = 0
 EMAIL_COOLDOWN = 60
@@ -39,7 +43,9 @@ def get_model(anomaly_type):
         return None
 
     if anomaly_type not in models_cache:
-        models_cache[anomaly_type] = YOLO(MODEL_URLS[anomaly_type])
+        with model_lock:
+            if anomaly_type not in models_cache:
+                models_cache[anomaly_type] = YOLO(MODEL_URLS[anomaly_type])
 
     return models_cache[anomaly_type]
 
@@ -66,7 +72,6 @@ Type: {anomaly_type}
 Detections:
 {detections}
 """
-
         msg.attach(MIMEText(body, "plain"))
 
         attachment = MIMEBase("application", "octet-stream")
@@ -80,7 +85,7 @@ Detections:
 
         msg.attach(attachment)
 
-        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server = smtplib.SMTP("smtp.gmail.com", 587, timeout=15)
         server.starttls()
         server.login(sender, password)
         server.sendmail(sender, receiver, msg.as_string())
@@ -102,57 +107,84 @@ def health():
 
 @app.post("/predict")
 async def predict(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     anomaly_type: str = Form(...)
 ):
     global last_email_time
 
-    model = get_model(anomaly_type)
+    try:
+        model = get_model(anomaly_type)
 
-    if model is None:
-        return {"error": "Invalid anomaly type"}
+        if model is None:
+            raise HTTPException(status_code=400, detail="Invalid anomaly type")
 
-    contents = await file.read()
+        contents = await file.read()
 
-    image = Image.open(io.BytesIO(contents)).convert("RGB")
+        if not contents:
+            raise HTTPException(status_code=400, detail="Empty file")
 
-    results = model(
-        image,
-        imgsz=320,
-        conf=0.25,
-        verbose=False
-    )
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+        image.thumbnail((640, 640))
 
-    detections = []
+        results = await asyncio.to_thread(
+            model,
+            image,
+            imgsz=320,
+            conf=0.25,
+            verbose=False
+        )
 
-    for r in results:
-        names = r.names
+        detections = []
 
-        for box in r.boxes:
-            cls_id = int(box.cls)
-            coords = box.xyxy[0].tolist()
+        for r in results:
+            names = r.names
 
-            detections.append({
-                "label": names[cls_id],
-                "confidence": float(box.conf),
-                "x1": coords[0],
-                "y1": coords[1],
-                "x2": coords[2],
-                "y2": coords[3]
-            })
+            for box in r.boxes:
+                cls_id = int(box.cls)
+                coords = box.xyxy[0].tolist()
 
-    current_time = time.time()
+                detections.append({
+                    "label": names[cls_id],
+                    "confidence": round(float(box.conf), 4),
+                    "x1": round(coords[0], 2),
+                    "y1": round(coords[1], 2),
+                    "x2": round(coords[2], 2),
+                    "y2": round(coords[3], 2)
+                })
 
-    if len(detections) > 0:
-        if current_time - last_email_time > EMAIL_COOLDOWN:
-            send_email_alert(anomaly_type, detections, contents)
-            last_email_time = current_time
+        current_time = time.time()
 
-    del results
-    del image
-    gc.collect()
+        if len(detections) > 0:
+            if current_time - last_email_time > EMAIL_COOLDOWN:
+                background_tasks.add_task(
+                    send_email_alert,
+                    anomaly_type,
+                    detections,
+                    contents
+                )
+                last_email_time = current_time
 
-    return {
-        "anomaly": anomaly_type,
-        "detections": detections
-    }
+        del results
+        del image
+        gc.collect()
+
+        return JSONResponse({
+            "success": True,
+            "anomaly": anomaly_type,
+            "count": len(detections),
+            "detections": detections
+        })
+
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={"success": False, "error": e.detail}
+        )
+
+    except Exception as e:
+        gc.collect()
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
