@@ -6,6 +6,7 @@ import io
 import os
 import smtplib
 import time
+import gc
 
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -22,13 +23,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-models = {
-    "fire": YOLO("https://huggingface.co/Shantanu28/anomaly-detection-app/resolve/main/firebest.pt"),
-    "weapon": YOLO("https://huggingface.co/Shantanu28/anomaly-detection-app/resolve/main/weaponbest.pt")
+MODEL_URLS = {
+    "fire": "https://huggingface.co/Shantanu28/anomaly-detection-app/resolve/main/firebest.pt",
+    "weapon": "https://huggingface.co/Shantanu28/anomaly-detection-app/resolve/main/weaponbest.pt"
 }
+
+models_cache = {}
 
 last_email_time = 0
 EMAIL_COOLDOWN = 60
+
+
+def get_model(anomaly_type):
+    if anomaly_type not in MODEL_URLS:
+        return None
+
+    if anomaly_type not in models_cache:
+        models_cache[anomaly_type] = YOLO(MODEL_URLS[anomaly_type])
+
+    return models_cache[anomaly_type]
 
 
 def send_email_alert(anomaly_type, detections, image_bytes):
@@ -53,11 +66,13 @@ Type: {anomaly_type}
 Detections:
 {detections}
 """
+
         msg.attach(MIMEText(body, "plain"))
 
         attachment = MIMEBase("application", "octet-stream")
         attachment.set_payload(image_bytes)
         encoders.encode_base64(attachment)
+
         attachment.add_header(
             "Content-Disposition",
             f'attachment; filename="{anomaly_type}_detected.jpg"'
@@ -70,8 +85,6 @@ Detections:
         server.login(sender, password)
         server.sendmail(sender, receiver, msg.as_string())
         server.quit()
-
-        print("Email sent successfully")
 
     except Exception as e:
         print("Email failed:", e)
@@ -88,10 +101,13 @@ def health():
 
 
 @app.post("/predict")
-async def predict(file: UploadFile = File(...), anomaly_type: str = Form(...)):
+async def predict(
+    file: UploadFile = File(...),
+    anomaly_type: str = Form(...)
+):
     global last_email_time
 
-    model = models.get(anomaly_type)
+    model = get_model(anomaly_type)
 
     if model is None:
         return {"error": "Invalid anomaly type"}
@@ -100,7 +116,12 @@ async def predict(file: UploadFile = File(...), anomaly_type: str = Form(...)):
 
     image = Image.open(io.BytesIO(contents)).convert("RGB")
 
-    results = model(image, imgsz=416, conf=0.20)
+    results = model(
+        image,
+        imgsz=320,
+        conf=0.25,
+        verbose=False
+    )
 
     detections = []
 
@@ -126,6 +147,10 @@ async def predict(file: UploadFile = File(...), anomaly_type: str = Form(...)):
         if current_time - last_email_time > EMAIL_COOLDOWN:
             send_email_alert(anomaly_type, detections, contents)
             last_email_time = current_time
+
+    del results
+    del image
+    gc.collect()
 
     return {
         "anomaly": anomaly_type,
